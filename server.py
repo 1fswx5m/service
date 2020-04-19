@@ -1,11 +1,74 @@
 import socket
 import select
+import sys
 
 HEADER_LENGTH = 10
 IP = "0.0.0.0"
 PORT = 1234
+RECV_BUFFER = 4096
+SOCKET_LIST = []
 
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+def server():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server_socket.bind((IP, PORT))
+    server_socket.listen(5)
+
+    SOCKET_LIST.append(server_socket)
+    
+    print('Server started on port ' + str(PORT))
+
+
+    while 1:
+
+        ready_to_read, ready_to_write, in_error = select.select(SOCKET_LIST, [], [], 0)
+
+        for sock in ready_to_read:
+            if sock == server_socket:
+                sockfd, addr = server_socket.accept()
+                SOCKET_LIST.append(sockfd)
+                print('Client (%s, %s) connected' % addr)
+
+                broadcast(server_socket, sockfd, "[%s:%s] entered our chatting room\n" % addr)
+
+            else:
+                try:
+                    data = sock.recv(RECV_BUFFER).decode('utf-8')
+
+                    if data:
+                        
+                        broadcast(server_socket, sock, "\r" + '[' + str(sock.getpeername()) + '] ' + data)
+
+                    else:
+
+                        if sock in SOCKET_LIST:
+                            SOCKET_LIST.remove(sock)
+
+                        broadcast(server_socket, sock, "Client (%s, %s) is offline\n" % addr)
+                except:
+                    broadcast(server_socket, sock, "Client (%s, %s) is offline\n" % addr)
+                    continue
+
+    server_socket.close()
+
+
+def broadcast(server_socket, sock, message):
+    for socket in SOCKET_LIST:
+        if socket != server_socket and socket != sock:
+            try:
+                socket.send(message.encode('utf-8'))
+            except:
+                socket.close()
+
+                if socket in SOCKET_LIST:
+                    SOCKET_LIST.remove(socket)
+    
+    
+    
+if __name__ == '__main__':
+    sys.exit(server())
+    
+"""server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
 server_socket.bind((IP, PORT))
@@ -23,7 +86,7 @@ def receive_message(client_socket):
         
         message_length = int(message_header.decode("utf-8").strip())
         
-        return {"header": message_header, "data": client_socket.recv(message_length)} 
+        return {'header': message_header, 'data': client_socket.recv(message_length)} 
     except:
         return False
 
@@ -62,4 +125,4 @@ while True:
     for notified_socket in exception_sockets:
         sockets_list.remove(notified_socket)
         del clients[notified_socket]
-
+"""
